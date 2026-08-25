@@ -10,13 +10,13 @@ that gets old fast.
 
 This gives you named profiles instead:
 
-```
-$ claude
-┌ Claude account
-│ > default   you@personal.com
-│   work      you@company.com
-└
-```
+<p align="center">
+  <img src="docs/img/demo.svg" alt="clp list shows two accounts, bare claude opens a picker, and claude @default goes straight to one" width="820">
+</p>
+
+<sub>Recorded against two throwaway accounts. The `starting Claude Code` line
+stands in for Claude Code itself, so the config directory each choice hands it
+is visible.</sub>
 
 Sessions on different accounts run at the same time without interfering, because
 each profile has its own config directory and its own credentials.
@@ -36,6 +36,9 @@ each profile has its own config directory and its own credentials.
 - **A picker on launch.** Bare `claude` asks which account. `claude @work` skips
   the question. Anything with arguments (`claude mcp list`, `claude -p`, a hook,
   a script) goes straight to your default account and never blocks on a prompt.
+
+  <img src="docs/img/picker.png" alt="The account picker listing default and work with the email each is signed in as" width="620">
+
 - **Shared config.** Profiles borrow your `CLAUDE.md`, skills, plugins, agents,
   settings and session history by symlink, so a second account is not a stock
   install. You choose what gets shared at install time.

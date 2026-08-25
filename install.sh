@@ -55,17 +55,47 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # Set CAS_INPUT to a file to answer non-interactively, which is also how the
 # test suite drives this.
 INPUT="${CAS_INPUT:-/dev/tty}"
-[ -r "$INPUT" ] || INPUT=/dev/stdin
-# Open once on its own descriptor. Redirecting per read would reopen the source
-# each time, and every prompt would get the first line again.
-exec 3<"$INPUT" || exec 3<&0
+
+# Refuse rather than guess. Falling back to stdin here meant that in a shell
+# with no /dev/tty (an agent, a CI job, a hook) every prompt returned empty,
+# every default was taken silently, and the run still reported success: it
+# wrote an isolated-mode config sharing nothing and dropped the shortcut
+# settings. A half-install that claims to have worked is worse than no install.
+# -r only tests the permission bits, and /dev/tty is world readable even when
+# the shell has no controlling terminal. The only honest test is opening it.
+if ! { exec 3<"$INPUT"; } 2>/dev/null; then
+  if [ -n "${CAS_INPUT:-}" ]; then
+    printf 'install.sh: cannot read CAS_INPUT file: %s\n' "$CAS_INPUT" >&2
+  else
+    cat >&2 <<'NOTTY'
+install.sh needs a terminal to ask its questions, and this shell has no
+/dev/tty. Nothing has been changed.
+
+From a terminal:
+
+  source ./install.sh
+
+Or answer from a file, one line per question:
+
+  printf '%s\n' 1 1 1 1 ~/.bashrc n n > /tmp/answers
+  CAS_INPUT=/tmp/answers ./install.sh
+NOTTY
+  fi
+  exit 1
+fi
+# Descriptor 3 is now open on it. Reading per prompt from the path instead
+# would reopen the source each time, and every prompt would get line one.
 
 # choose "Header" "opt1" "opt2" ...   -> prints the chosen option
 choose() {
   local header="$1"; shift
   if [ -z "${CAS_INPUT:-}" ] && have gum; then
-    printf '%s\n' "$@" | gum choose --header "$header"
-    return
+    local picked
+    if picked="$(printf '%s\n' "$@" | gum choose --header "$header")" && [ -n "$picked" ]; then
+      printf '%s\n' "$picked"
+      return 0
+    fi
+    # gum failed or returned nothing: fall through to the numbered menu.
   fi
   printf '%s\n' "$header" >&2
   local i=1 opt

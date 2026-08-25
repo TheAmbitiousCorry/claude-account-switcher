@@ -326,6 +326,12 @@ picker. Check `CLAUDE_ACCOUNTS_SYNC_MODE` is not `isolated`, and that
 That is `from-default` mode doing its job: the default account is authoritative
 and is never written. Delete it on the default account, or switch to `two-way`.
 
+**`install.sh` says it needs a terminal**
+It asks questions, so it refuses to run where there is no `/dev/tty`: an agent
+shell, a CI job, a hook. It changes nothing in that case. Run it from a terminal,
+or answer it from a file with `CAS_INPUT`, one line per question. The same
+applies to `uninstall.sh`.
+
 **`clp version` says the checkout has moved on**
 Re-run `source ./install.sh` in that checkout. Copies do not update themselves.
 

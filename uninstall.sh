@@ -25,8 +25,32 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # Same input handling as install.sh: read the terminal by default, or a file
 # given in CAS_INPUT, opened once on its own descriptor.
 INPUT="${CAS_INPUT:-/dev/tty}"
-[ -r "$INPUT" ] || INPUT=/dev/stdin
-exec 3<"$INPUT" || exec 3<&0
+
+# Same refusal as install.sh, and for the same reason: with no /dev/tty every
+# confirm returns empty, the questions about deleting profiles and backups are
+# answered by default rather than by you, and the run still reports success.
+# -r only tests permission bits, and /dev/tty is world readable even with no
+# controlling terminal, so the test has to be an actual open.
+if ! { exec 3<"$INPUT"; } 2>/dev/null; then
+  if [ -n "${CAS_INPUT:-}" ]; then
+    printf 'uninstall.sh: cannot read CAS_INPUT file: %s\n' "$CAS_INPUT" >&2
+  else
+    cat >&2 <<'NOTTY'
+uninstall.sh needs a terminal to ask what to keep, and this shell has no
+/dev/tty. Nothing has been changed.
+
+From a terminal:
+
+  ./uninstall.sh
+
+Or answer from a file, one line per question:
+
+  printf '%s\n' y y y > /tmp/answers
+  CAS_INPUT=/tmp/answers ./uninstall.sh
+NOTTY
+  fi
+  exit 1
+fi
 
 confirm() {
   if [ -z "${CAS_INPUT:-}" ] && have gum; then gum confirm "$1"; return $?; fi

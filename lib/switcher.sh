@@ -200,7 +200,9 @@ _clp_list() {
     [ -n "$name" ] || continue
     if [ "$name" = "default" ]; then dir="default"; else dir="$CLAUDE_ACCOUNTS_ROOT/$name"; fi
     email="$(_claude_profile_email "$dir" "$name")"
-    if [ "$name" = "default" ]; then marker="~/.claude"; else marker="$dir"; fi
+    # ~ rather than the full path: these lines are mostly $HOME, and the part
+    # that identifies the profile is at the end.
+    if [ "$name" = "default" ]; then marker="~/.claude"; else marker="${dir/#$HOME/\~}"; fi
     printf '  %-12s %-28s %s\n' "$name" "$email" "$marker"
   done < <(_claude_profile_names)
 }

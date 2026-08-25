@@ -57,15 +57,22 @@ each profile has its own config directory and its own credentials.
 ## Install
 
 ```bash
-git clone https://github.com/TheAmbitiousCorry/claude-account-switcher.git
-cd claude-account-switcher
-./install.sh
+git clone https://github.com/TheAmbitiousCorry/claude-account-switcher.git && cd claude-account-switcher && ./install.sh
 ```
 
 The installer asks what to share, whether to merge one way or both, whether you
 want the status line, and whether to bind a keyboard shortcut. Re-run it any time
 to change your answers. Every file it edits outside `~/.claude-accounts` is
 backed up first.
+
+Nothing is copied into `~/.claude-accounts`. The scripts are symlinked from this
+checkout, so **the clone you install from is the one that runs**. Put it
+somewhere permanent, and update in place:
+
+```bash
+cd claude-account-switcher && git pull && ./install.sh   # re-run to change answers
+./uninstall.sh                                           # reverses everything
+```
 
 Then:
 

@@ -57,8 +57,14 @@ each profile has its own config directory and its own credentials.
 ## Install
 
 ```bash
-git clone https://github.com/TheAmbitiousCorry/claude-account-switcher.git && cd claude-account-switcher && ./install.sh
+git clone https://github.com/TheAmbitiousCorry/claude-account-switcher.git && cd claude-account-switcher && source ./install.sh
 ```
+
+`source` rather than `./install.sh` so that `clp` works the moment it finishes.
+A script cannot load a shell function into the shell that launched it, so the
+plain form has to end by telling you to run
+`source ~/.claude-accounts/switcher.sh` or open a new terminal. Both install the
+same thing.
 
 The installer asks what to share, whether to merge one way or both, whether you
 want the status line, and whether to bind a keyboard shortcut. Re-run it any time

@@ -6,6 +6,18 @@
 #
 #   ./install.sh          copy the scripts, so this checkout can be deleted
 #   ./install.sh --link   symlink them, so edits here are live (development)
+#   source ./install.sh   install, then load clp into this shell right away
+
+# A script cannot change the shell that launched it, so `./install.sh` can only
+# tell you to reload. Sourcing this file instead runs it in your own shell,
+# which is why the last step below can hand you a working clp immediately.
+CAS_SOURCED=0
+[ "${BASH_SOURCE[0]:-$0}" != "$0" ] && CAS_SOURCED=1
+
+# Everything runs in a subshell so that sourcing leaves nothing behind. `set -u`
+# in an interactive shell turns a typo into an error, and helpers named `ask`,
+# `have` and `backup` would quietly shadow whatever you already had.
+(
 
 set -uo pipefail
 
@@ -391,7 +403,12 @@ fi
 # ---------------------------------------------------------------- done
 
 head2 "Done"
-say "Start a new shell, then:"
+if [ "$CAS_SOURCED" -eq 1 ]; then
+  say "Ready to use:"
+else
+  say "Load it into this shell with ${bold}source ~/.claude-accounts/switcher.sh${reset}"
+  say "${dim}or open a new terminal. Next time, ${reset}${bold}source ./install.sh${reset}${dim} does it for you.${reset}"
+fi
 say ""
 say "  ${bold}clp add work${reset}      create a second account"
 say "  ${bold}clp use work${reset}      launch it, then /login"
@@ -405,3 +422,23 @@ if [ "$LINK" -eq 0 ]; then
   say "${dim}The scripts were copied, so this checkout is free to move or delete."
   say "After a ${reset}${bold}git pull${reset}${dim}, re-run this installer to update them.${reset}"
 fi
+
+)
+cas_status=$?
+
+if [ "$CAS_SOURCED" -eq 0 ]; then
+  exit "$cas_status"
+fi
+
+# Sourced, and the install worked: load the switcher into this shell so clp and
+# the claude wrapper exist now, without opening a new terminal.
+if [ "$cas_status" -eq 0 ]; then
+  cas_switcher="${CLAUDE_ACCOUNTS_ROOT:-$HOME/.claude-accounts}/switcher.sh"
+  if [ -r "$cas_switcher" ]; then
+    # shellcheck source=/dev/null
+    . "$cas_switcher" && printf '  \033[1mclp\033[0m is ready in this shell.\n\n'
+  fi
+  unset cas_switcher
+fi
+
+unset CAS_SOURCED cas_status

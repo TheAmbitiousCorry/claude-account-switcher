@@ -252,6 +252,12 @@ _clp_version() {
 
   # A copy install goes stale quietly: git pull updates the checkout, not the
   # files actually being run.
+  if [ ! -d "$CAS_INSTALL_REPO" ]; then
+    echo
+    echo "  that checkout is gone, which is fine for a copy install"
+    echo "  clone the repo again to update"
+    return 0
+  fi
   if [ "$CAS_INSTALL_MODE" = "copy" ] && [ -d "$CAS_INSTALL_REPO/.git" ]; then
     local head
     head="$(git -C "$CAS_INSTALL_REPO" rev-parse --short HEAD 2>/dev/null)"

@@ -208,6 +208,9 @@ else
 fi
 
 shared_array="$(printf '%s' "$shared_list" | tr ' ' '\n' | sed '/^$/d' | sed 's/^/  /' )"
+# Re-running the installer is the documented way to change answers, so the
+# previous answers are worth keeping. This also preserves any hand edits.
+backup "$ROOT/config.sh"
 {
   echo "# Written by claude-account-switcher install.sh on $(date -Iseconds)."
   echo "# Edit freely, or delete this file to fall back to defaults."

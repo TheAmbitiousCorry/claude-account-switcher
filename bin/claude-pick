@@ -1,0 +1,86 @@
+#!/bin/bash
+# Pick a Claude Code account, then launch Claude Code in this terminal.
+#
+# Meant for a keyboard shortcut or a desktop launcher, where there is no shell
+# to type `claude @work` into. The picker appears in the terminal window Claude
+# is about to occupy, so the choice and the session share one window.
+#
+# Environment:
+#   CLAUDE_PROFILE     skip the picker and use this profile
+#   CLAUDE_PICK_ARGS   extra arguments passed to claude, word-split
+#                      e.g. CLAUDE_PICK_ARGS="--permission-mode bypassPermissions"
+#   CLAUDE_PICK_CD     start in this directory when launched from $HOME
+#
+# Anything after -- on the command line is also passed through to claude.
+
+set -uo pipefail
+
+SWITCHER="${CLAUDE_ACCOUNTS_ROOT:-$HOME/.claude-accounts}/switcher.sh"
+if [ ! -r "$SWITCHER" ]; then
+  echo "Account switcher not found at $SWITCHER" >&2
+  exec claude "$@"
+fi
+
+# shellcheck source=/dev/null
+source "$SWITCHER"
+# switcher.sh defines a `claude` wrapper for interactive shells. This script
+# calls the real binary itself, so drop the function to avoid recursing.
+unset -f claude 2>/dev/null || true
+
+# Agents will not remember trust for $HOME, so a launcher that starts there asks
+# on every session. Starting somewhere else avoids that.
+if [ -n "${CLAUDE_PICK_CD:-}" ] && [ "$PWD" = "$HOME" ] && [ -d "$CLAUDE_PICK_CD" ]; then
+  cd "$CLAUDE_PICK_CD" || true
+fi
+
+names=()
+while read -r n; do [ -n "$n" ] && names+=("$n"); done < <(_claude_profile_names)
+
+profile="${CLAUDE_PROFILE:-}"
+
+if [ -z "$profile" ]; then
+  if [ "${#names[@]}" -le 1 ]; then
+    profile="default"
+  else
+    labels=()
+    for name in "${names[@]}"; do
+      if [ "$name" = "default" ]; then dir="default"; else dir="$CLAUDE_ACCOUNTS_ROOT/$name"; fi
+      labels+=("$name   $(_claude_profile_email "$dir" "$name")")
+    done
+
+    picked=""
+    if command -v gum >/dev/null 2>&1; then
+      picked="$(printf '%s\n' "${labels[@]}" | gum choose --header "Claude account")"
+    elif command -v fzf >/dev/null 2>&1; then
+      picked="$(printf '%s\n' "${labels[@]}" | fzf --prompt="Claude account > " --height=~10)"
+    else
+      echo "Claude account:"
+      i=1
+      for l in "${labels[@]}"; do echo "  $i) $l"; i=$((i+1)); done
+      read -r -p "> " i
+      case "$i" in
+        ''|*[!0-9]*) exit 1 ;;
+        *) picked="${labels[$((i-1))]}" ;;
+      esac
+    fi
+
+    # Closing the picker without choosing should close the window, not silently
+    # launch the wrong account.
+    [ -n "$picked" ] || exit 1
+    profile="${picked%% *}"
+  fi
+fi
+
+if [ "$profile" != "default" ]; then
+  dir="$CLAUDE_ACCOUNTS_ROOT/$profile"
+  if [ ! -d "$dir" ]; then
+    echo "No such profile: $profile" >&2
+    exit 1
+  fi
+  _claude_sync_profile "$dir"
+  export CLAUDE_CONFIG_DIR="$dir"
+fi
+
+# Deliberately unquoted: these are meant to word-split into separate arguments.
+# shellcheck disable=SC2086
+exec claude ${CLAUDE_PICK_ARGS:-} "$@"

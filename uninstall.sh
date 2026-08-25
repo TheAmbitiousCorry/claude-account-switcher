@@ -156,7 +156,9 @@ fi
 
 if [ "${#profiles[@]}" -eq 0 ]; then
   note "none found"
-  rm -f "$ROOT/config.sh" 2>/dev/null
+  # The .bak copies are previous answers. With no profiles left they answer a
+  # question nobody is going to ask again.
+  rm -f "$ROOT/config.sh" "$ROOT"/config.sh.bak.* 2>/dev/null
   # Fails while backups are still there, which is correct: the next section
   # asks about those, and an empty root is removed at the end of it.
   rmdir "$ROOT" 2>/dev/null && ok "removed empty $ROOT"
@@ -168,7 +170,7 @@ else
     # Keep the backups directory out of it. It is handled next, on its own
     # question, because it holds copies of sign-ins that were already deleted.
     for p in "${profiles[@]}"; do rm -rf "${ROOT:?}/$p"; done
-    rm -f "$ROOT/config.sh" 2>/dev/null
+    rm -f "$ROOT/config.sh" "$ROOT"/config.sh.bak.* 2>/dev/null
     ok "removed ${#profiles[@]} profile(s)"
   else
     note "kept at $ROOT"

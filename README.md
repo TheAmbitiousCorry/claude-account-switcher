@@ -65,14 +65,19 @@ want the status line, and whether to bind a keyboard shortcut. Re-run it any tim
 to change your answers. Every file it edits outside `~/.claude-accounts` is
 backed up first.
 
-Nothing is copied into `~/.claude-accounts`. The scripts are symlinked from this
-checkout, so **the clone you install from is the one that runs**. Put it
-somewhere permanent, and update in place:
+The scripts are copied into `~/.claude-accounts` and `~/.local/bin`, so the
+clone is disposable once the installer finishes. Updating means pulling and
+re-running it:
 
 ```bash
-cd claude-account-switcher && git pull && ./install.sh   # re-run to change answers
+cd claude-account-switcher && git pull && ./install.sh   # also how you change answers
+clp version                                              # what is installed, and if it is behind
 ./uninstall.sh                                           # reverses everything
 ```
+
+Working on this repo? `./install.sh --link` symlinks the scripts instead, so
+edits are live. The checkout is then part of the installation, and moving or
+deleting it breaks the switcher.
 
 Then:
 

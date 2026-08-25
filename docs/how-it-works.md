@@ -31,7 +31,7 @@ agents, no themes, no history. For a second account belonging to the same person
 that is wrong: you want the same instructions and tooling, just a different
 sign-in.
 
-So `claude-profile-add` symlinks the shared pieces back to `~/.claude`. Which
+So `clp add` symlinks the shared pieces back to `~/.claude`. Which
 pieces is your choice at install time.
 
 One result is worth calling out. Symlinking `plugins` also carries plugin-provided

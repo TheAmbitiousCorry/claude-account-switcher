@@ -146,7 +146,7 @@ if [ -d "$ROOT" ]; then
   for d in "$ROOT"/*/; do
     [ -d "$d" ] || continue
     name="$(basename "$d")"
-    case "$name" in _*|.*) continue ;; esac
+    case "$name" in _*|.*|backups) continue ;; esac
     profiles+=("$name")
   done
 fi
@@ -154,19 +154,41 @@ fi
 if [ "${#profiles[@]}" -eq 0 ]; then
   note "none found"
   rm -f "$ROOT/config.sh" 2>/dev/null
+  # Fails while backups are still there, which is correct: the next section
+  # asks about those, and an empty root is removed at the end of it.
   rmdir "$ROOT" 2>/dev/null && ok "removed empty $ROOT"
 else
   say "  These hold each account's sign-in:"
   for p in "${profiles[@]}"; do say "    $p"; done
   say ""
   if confirm "Delete them? You will have to sign in again on those accounts."; then
-    rm -rf "$ROOT"
-    ok "removed $ROOT"
+    # Keep the backups directory out of it. It is handled next, on its own
+    # question, because it holds copies of sign-ins that were already deleted.
+    for p in "${profiles[@]}"; do rm -rf "${ROOT:?}/$p"; done
+    rm -f "$ROOT/config.sh" 2>/dev/null
+    ok "removed ${#profiles[@]} profile(s)"
   else
     note "kept at $ROOT"
     note "re-running install.sh will pick them up again"
   fi
 fi
+
+# ---------------------------------------------------------------- backups
+
+if [ -d "$ROOT/backups" ]; then
+  head2 "Backups"
+  say "  $(find "$ROOT/backups" -type f | wc -l) saved copies in $ROOT/backups"
+  say "  These include .credentials.json copies, which are sign-in tokens."
+  say ""
+  if confirm "Delete them too?"; then
+    rm -rf "${ROOT:?}/backups"
+    ok "removed $ROOT/backups"
+  else
+    note "kept at $ROOT/backups"
+  fi
+fi
+
+rmdir "$ROOT" 2>/dev/null && ok "removed empty $ROOT"
 
 head2 "Done"
 say "~/.claude and ~/.claude.json were not modified."

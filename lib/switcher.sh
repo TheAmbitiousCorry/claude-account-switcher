@@ -62,15 +62,25 @@ CLAUDE_ACCOUNTS_SYNC_KEYS="${CLAUDE_ACCOUNTS_SYNC_KEYS:-mcpServers projects}"
 
 # Merge shared config between the default profile and one named profile, in both
 # directions. See sync.py for how deletions and conflicts are handled.
+# Run sync.py with the settings it reads from the environment. These are plain
+# shell variables here, so without passing them across, a custom root or
+# retention would be silently ignored and backups would land somewhere else.
+_clp_sync_py() {
+  [ -r "$CLAUDE_ACCOUNTS_ROOT/sync.py" ] || return 1
+  CLAUDE_ACCOUNTS_ROOT="$CLAUDE_ACCOUNTS_ROOT" \
+  CLAUDE_ACCOUNTS_BACKUP_DIR="${CLAUDE_ACCOUNTS_BACKUP_DIR:-}" \
+  CLAUDE_ACCOUNTS_BACKUP_KEEP="${CLAUDE_ACCOUNTS_BACKUP_KEEP:-}" \
+    python3 "$CLAUDE_ACCOUNTS_ROOT/sync.py" "$@"
+}
+
 _claude_sync_profile() {
   local dir="$1"
   [ "$CLAUDE_ACCOUNTS_SYNC_MODE" = "isolated" ] && return 0
   [ -n "${CLAUDE_ACCOUNTS_SYNC_KEYS:-}" ] || return 0
   [ -d "$dir" ] || return 0
   [ -r "$HOME/.claude.json" ] || return 0
-  [ -r "$CLAUDE_ACCOUNTS_ROOT/sync.py" ] || return 0
 
-  python3 "$CLAUDE_ACCOUNTS_ROOT/sync.py" --mode "$CLAUDE_ACCOUNTS_SYNC_MODE" \
+  _clp_sync_py --mode "$CLAUDE_ACCOUNTS_SYNC_MODE" \
     "$HOME/.claude.json" "$dir" $CLAUDE_ACCOUNTS_SYNC_KEYS
 }
 
@@ -89,29 +99,54 @@ except Exception:
 " "$json" 2>/dev/null || echo "not signed in"
 }
 
-# List profile names, default first. Directories starting with "_" or "." are
-# not profiles, so __pycache__ and similar strays never show up as accounts.
+# Directory names inside the accounts root that are ours, not accounts.
+CLAUDE_ACCOUNTS_RESERVED="backups"
+
+# List profile names, default first. Directories starting with "_" or ".", and
+# the ones we own, are not profiles, so __pycache__, backups and similar strays
+# never show up as accounts or in the picker.
 _claude_profile_names() {
   echo default
   [ -d "$CLAUDE_ACCOUNTS_ROOT" ] || return
-  local d name
+  local d name reserved
   for d in "$CLAUDE_ACCOUNTS_ROOT"/*/; do
     [ -d "$d" ] || continue
     name="$(basename "$d")"
     case "$name" in
       _*|.*) continue ;;
     esac
+    for reserved in $CLAUDE_ACCOUNTS_RESERVED; do
+      [ "$name" = "$reserved" ] && continue 2
+    done
     echo "$name"
   done
 }
 
-# Create a new profile and link it to the shared config.
-claude-profile-add() {
+# Copy a file aside before something destroys it. Naming and retention live in
+# sync.py, so removal and sync cannot drift into two different policies.
+_clp_backup() {
+  local label="$1"; shift
+  _clp_sync_py --backup "$label" "$@" >/dev/null 2>&1
+}
+
+# clp add <name>
+# Create a profile and link it to the shared config.
+_clp_add() {
   local name="$1"
   if [ -z "$name" ] || [ "$name" = "default" ]; then
-    echo "usage: claude-profile-add <name>   (name cannot be 'default')" >&2
+    echo "usage: clp add <name>   (name cannot be 'default')" >&2
     return 1
   fi
+  case "$name" in
+    _*|.*|*/*) echo "clp: invalid profile name: $name" >&2; return 1 ;;
+  esac
+  local reserved
+  for reserved in $CLAUDE_ACCOUNTS_RESERVED; do
+    if [ "$name" = "$reserved" ]; then
+      echo "clp: '$name' is reserved, pick another name" >&2
+      return 1
+    fi
+  done
   local dir="$CLAUDE_ACCOUNTS_ROOT/$name"
   if [ -e "$dir" ]; then
     echo "profile '$name' already exists at $dir" >&2
@@ -129,28 +164,37 @@ claude-profile-add() {
   echo "MCP servers and project trust are synced from the default profile on"
   echo "every launch, so there is nothing else to configure."
   echo
-  echo "Next:  claude @$name    then run /login as the second account"
+  echo "Next:  clp use $name    then run /login as the second account"
 }
 
-# Remove a profile. Only deletes the profile directory, never ~/.claude.
-claude-profile-remove() {
+# clp remove <name>
+# Delete a profile directory. Never touches ~/.claude.
+_clp_remove() {
   local name="$1"
   if [ -z "$name" ] || [ "$name" = "default" ]; then
-    echo "usage: claude-profile-remove <name>   (cannot remove 'default')" >&2
+    echo "usage: clp remove <name>   (cannot remove 'default')" >&2
     return 1
   fi
   local dir="$CLAUDE_ACCOUNTS_ROOT/$name"
   [ -d "$dir" ] || { echo "no such profile: $name" >&2; return 1; }
   echo "This deletes $dir (symlinks and this profile's sign-in). ~/.claude is untouched."
+  echo "Its config and credentials are backed up first: clp backups"
   read -r -p "Remove profile '$name'? [y/N] " reply
   case "$reply" in
-    [yY]*) rm -rf "$dir"; echo "removed $name" ;;
+    [yY]*)
+      # Both, and before the delete: the sign-in is the part that cannot be
+      # recreated without logging in again.
+      _clp_backup "$name" "$dir/.claude.json" "$dir/.credentials.json"
+      rm -rf "$dir"
+      echo "removed $name"
+      ;;
     *) echo "cancelled" ;;
   esac
 }
 
+# clp list
 # Show every profile and who it is signed in as.
-claude-profile-list() {
+_clp_list() {
   local name dir email marker
   while read -r name; do
     [ -n "$name" ] || continue
@@ -161,6 +205,86 @@ claude-profile-list() {
   done < <(_claude_profile_names)
 }
 
+# clp use <name> [args...]
+# Launch Claude Code under one profile. Same as `claude @<name>`.
+_clp_use() {
+  local name="$1"
+  if [ -z "$name" ]; then
+    echo "usage: clp use <name> [claude args...]" >&2
+    return 1
+  fi
+  shift
+  _claude_run_profile "$name" "$@"
+}
+
+# clp backups
+# What has been saved, oldest first, with the path to copy back from.
+_clp_backups() {
+  local out
+  out="$(_clp_sync_py --list-backups)" || return 0
+  if [ -z "$out" ]; then
+    echo "  no backups yet"
+    return 0
+  fi
+  local when size path
+  while IFS=$'\t' read -r when size path; do
+    printf '  %s  %7s  %s\n' "$when" "$size" "$path"
+  done <<< "$out"
+  echo
+  echo "Restore by copying one back, for example:"
+  echo "  cp <path> ~/.claude.json"
+}
+
+_clp_help() {
+  cat <<'EOF'
+clp - Claude Code account profiles
+
+  clp list             every profile and the account it is signed in as
+  clp add <name>       create a profile, then sign in with /login
+  clp use <name>       launch Claude Code on that profile
+  clp remove <name>    delete a profile, after backing up its sign-in
+  clp backups          config and credential copies kept automatically
+
+Also:
+  claude               bare, with more than one profile, asks which to use
+  claude @<name>       same as clp use <name>
+EOF
+}
+
+clp() {
+  local cmd="${1:-help}"
+  [ "$#" -gt 0 ] && shift
+  case "$cmd" in
+    add)            _clp_add "$@" ;;
+    list|ls)        _clp_list "$@" ;;
+    remove|rm)      _clp_remove "$@" ;;
+    use)            _clp_use "$@" ;;
+    backups)        _clp_backups "$@" ;;
+    help|-h|--help) _clp_help ;;
+    *)
+      echo "clp: unknown command '$cmd'" >&2
+      _clp_help >&2
+      return 1
+      ;;
+  esac
+}
+
+# Complete subcommands first, profile names after the ones that take them.
+_clp_complete() {
+  local cur="${COMP_WORDS[COMP_CWORD]}"
+  if [ "$COMP_CWORD" -le 1 ]; then
+    COMPREPLY=($(compgen -W "list add use remove backups help" -- "$cur"))
+    return
+  fi
+  case "${COMP_WORDS[1]}" in
+    use|remove|rm)
+      COMPREPLY=($(compgen -W "$(_claude_profile_names | tr '\n' ' ')" -- "$cur"))
+      ;;
+    *) COMPREPLY=() ;;
+  esac
+}
+complete -F _clp_complete clp 2>/dev/null
+
 # Run claude under a named profile.
 _claude_run_profile() {
   local name="$1"; shift
@@ -169,7 +293,7 @@ _claude_run_profile() {
   else
     local dir="$CLAUDE_ACCOUNTS_ROOT/$name"
     if [ ! -d "$dir" ]; then
-      echo "no such profile: $name  (run 'claude-profile-list' to see them)" >&2
+      echo "no such profile: $name  (run 'clp list' to see them)" >&2
       return 1
     fi
     _claude_sync_profile "$dir"

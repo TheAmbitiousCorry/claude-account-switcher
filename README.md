@@ -71,8 +71,8 @@ Then:
 
 ```bash
 exec bash                    # pick up the shell function
-claude-profile-add work      # create a second profile
-claude @work                 # launch it, then run /login
+clp add work                 # create a second profile
+clp use work                 # launch it, then run /login
 ```
 
 ## Usage
@@ -83,9 +83,37 @@ claude @work                 # launch a specific one
 claude mcp list              # no picker, uses default
 CLAUDE_PROFILE=work claude   # pick via environment
 
-claude-profile-list          # who each profile is signed in as
-claude-profile-add <name>    # create one
-claude-profile-remove <name> # delete one, with a confirmation
+clp list                     # who each profile is signed in as
+clp add <name>               # create one
+clp use <name> [args...]     # launch it, same as claude @<name>
+clp remove <name>            # delete one, with a confirmation
+clp backups                  # what has been saved, and where
+```
+
+The command is `clp`, not `cp`: shadowing coreutils `cp` in every interactive
+shell is not worth two saved keystrokes.
+
+## Backups
+
+Nothing here asks you to copy files aside first. Before anything overwrites or
+deletes config that you did not ask it to change, it is saved to
+`~/.claude-accounts/backups/`:
+
+- `~/.claude.json`, before a two-way sync merges the other account's servers in
+- a profile's own `.claude.json`, on the same merge
+- a profile's `.claude.json` and `.credentials.json`, before `clp remove`
+  deletes it
+
+An unchanged file is not copied again, so frequent launches do not push real
+history out. The newest ten per file are kept, set `CLAUDE_ACCOUNTS_BACKUP_KEEP`
+in `config.sh` to change that or `0` to turn it off. The directory is `0700` and
+the copies `0600`, because credential files are sign-in tokens.
+
+Restore by copying one back:
+
+```bash
+clp backups
+cp ~/.claude-accounts/backups/default-claude-20260101-120000-00.json ~/.claude.json
 ```
 
 ## How it works

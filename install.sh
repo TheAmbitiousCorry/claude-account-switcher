@@ -182,7 +182,7 @@ fi
   echo "CAS_INSTALL_MODE=$([ "$LINK" -eq 1 ] && echo link || echo copy)"
   echo "CAS_INSTALL_REPO=\"$REPO\""
   echo "CAS_INSTALL_COMMIT=$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-  echo "CAS_INSTALL_DATE=$(date -Iseconds)"
+  echo "CAS_INSTALL_DATE=$(date "+%Y-%m-%dT%H:%M:%S%z")"
 } > "$ROOT/.install-info"
 
 case ":$PATH:" in
@@ -211,7 +211,9 @@ if [ "$sync_mode" = "Keep fully isolated" ]; then
   ok "profiles will share nothing"
 else
   say ""
-  mapfile -t shared_pick < <(multichoose "Symlink from your main account into every profile:" \
+  # read loop rather than mapfile, which needs bash 4 and macOS ships 3.2
+  shared_pick=()
+  while IFS= read -r cas_line; do shared_pick+=("$cas_line"); done < <(multichoose "Symlink from your main account into every profile:" \
     "CLAUDE.md (your global instructions)" \
     "skills" \
     "plugins (also carries plugin MCP servers)" \
@@ -236,7 +238,8 @@ else
   say "Some config lives inside .claude.json, which cannot be symlinked because"
   say "it also holds the account identity. Those keys get merged instead."
   say ""
-  mapfile -t key_pick < <(multichoose "Merge which keys between profiles?" \
+  key_pick=()
+  while IFS= read -r cas_line; do key_pick+=("$cas_line"); done < <(multichoose "Merge which keys between profiles?" \
     "MCP servers" \
     "Project trust and per-directory history")
 
@@ -267,7 +270,7 @@ shared_array="$(printf '%s' "$shared_list" | tr ' ' '\n' | sed '/^$/d' | sed 's/
 # previous answers are worth keeping. This also preserves any hand edits.
 backup "$ROOT/config.sh"
 {
-  echo "# Written by claude-account-switcher install.sh on $(date -Iseconds)."
+  echo "# Written by claude-account-switcher install.sh on $(date "+%Y-%m-%dT%H:%M:%S%z")."
   echo "# Edit freely, or delete this file to fall back to defaults."
   echo ""
   echo "CLAUDE_ACCOUNTS_SYNC_MODE=$sync_dir"

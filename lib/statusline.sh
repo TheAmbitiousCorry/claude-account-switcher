@@ -46,7 +46,8 @@ email="$(jq -r '.oauthAccount.emailAddress // empty' "$config" 2>/dev/null)"
 # Colour: explicit mapping first, then a stable fallback derived from the name.
 color=""
 if [ -r "$ROOT/colors.conf" ]; then
-  color="$(sed -n "s/^${profile}=\([0-9]\+\).*/\1/p" "$ROOT/colors.conf" | head -1)"
+  # \{1,\} rather than \+, which is a GNU extension and a literal plus in BSD sed.
+  color="$(sed -n "s/^${profile}=\([0-9]\{1,\}\).*/\1/p" "$ROOT/colors.conf" | head -1)"
 fi
 if [ -z "$color" ]; then
   if [ "$profile" = "default" ]; then

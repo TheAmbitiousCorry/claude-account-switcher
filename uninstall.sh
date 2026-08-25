@@ -133,10 +133,13 @@ done
 # ---------------------------------------------------------------- files
 
 head2 "Installed files"
+# -e, not -L: an install without --link copies these, and testing for a symlink
+# would leave every copy behind.
 for f in switcher.sh sync.py statusline.sh; do
-  [ -L "$ROOT/$f" ] && rm -f "$ROOT/$f" && ok "removed $ROOT/$f"
+  [ -e "$ROOT/$f" ] && rm -f "$ROOT/$f" && ok "removed $ROOT/$f"
 done
-[ -L "$BIN/claude-pick" ] && rm -f "$BIN/claude-pick" && ok "removed $BIN/claude-pick"
+rm -f "$ROOT/.install-info"
+[ -e "$BIN/claude-pick" ] && rm -f "$BIN/claude-pick" && ok "removed $BIN/claude-pick"
 
 # ---------------------------------------------------------------- profiles
 

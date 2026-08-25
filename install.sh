@@ -3,8 +3,23 @@
 #
 # Re-runnable. Every step is idempotent, and every file it touches outside
 # ~/.claude-accounts is backed up first. uninstall.sh reverses all of it.
+#
+#   ./install.sh          copy the scripts, so this checkout can be deleted
+#   ./install.sh --link   symlink them, so edits here are live (development)
 
 set -uo pipefail
+
+LINK=0
+for arg in "$@"; do
+  case "$arg" in
+    --link) LINK=1 ;;
+    -h|--help)
+      sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    *) echo "install.sh: unknown option $arg" >&2; exit 1 ;;
+  esac
+done
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${CLAUDE_ACCOUNTS_ROOT:-$HOME/.claude-accounts}"
@@ -123,12 +138,40 @@ fi
 head2 "Installing"
 
 mkdir -p "$ROOT" "$BIN"
-for f in switcher.sh sync.py statusline.sh; do
-  ln -sfn "$REPO/lib/$f" "$ROOT/$f"
-done
-ln -sfn "$REPO/bin/claude-pick" "$BIN/claude-pick"
-chmod +x "$REPO/bin/claude-pick" "$REPO/lib/statusline.sh" 2>/dev/null
-ok "linked scripts into $ROOT and $BIN"
+
+# Copy by default. Symlinking makes the checkout part of the installation, so
+# deleting or moving it breaks a working setup, and that is a surprising way to
+# lose your account switcher. --link is for working on this repo.
+if [ "$LINK" -eq 1 ]; then
+  for f in switcher.sh sync.py statusline.sh; do
+    ln -sfn "$REPO/lib/$f" "$ROOT/$f"
+  done
+  ln -sfn "$REPO/bin/claude-pick" "$BIN/claude-pick"
+  chmod +x "$REPO/bin/claude-pick" "$REPO/lib/statusline.sh" 2>/dev/null
+  ok "linked scripts into $ROOT and $BIN"
+  note "this checkout is now part of the install; do not move or delete it"
+else
+  for f in switcher.sh sync.py statusline.sh; do
+    # rm first: overwriting through an existing symlink would write into the
+    # checkout an earlier --link install pointed at.
+    rm -f "$ROOT/$f"
+    cp "$REPO/lib/$f" "$ROOT/$f"
+  done
+  rm -f "$BIN/claude-pick"
+  cp "$REPO/bin/claude-pick" "$BIN/claude-pick"
+  chmod +x "$BIN/claude-pick" "$ROOT/statusline.sh"
+  ok "copied scripts into $ROOT and $BIN"
+fi
+
+# What is installed and where it came from, so `clp version` can answer it and
+# an update knows whether the checkout has moved on.
+{
+  echo "# Written by install.sh. Read by 'clp version'."
+  echo "CAS_INSTALL_MODE=$([ "$LINK" -eq 1 ] && echo link || echo copy)"
+  echo "CAS_INSTALL_REPO=\"$REPO\""
+  echo "CAS_INSTALL_COMMIT=$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  echo "CAS_INSTALL_DATE=$(date -Iseconds)"
+} > "$ROOT/.install-info"
 
 case ":$PATH:" in
   *":$BIN:"*) ;;
@@ -357,3 +400,8 @@ say "  ${bold}clp list${reset}          see who each profile is signed in as"
 say "  ${bold}clp backups${reset}       config and sign-in copies kept automatically"
 say ""
 say "Uninstall with ${bold}./uninstall.sh${reset}. Your ~/.claude is never modified."
+if [ "$LINK" -eq 0 ]; then
+  say ""
+  say "${dim}The scripts were copied, so this checkout is free to move or delete."
+  say "After a ${reset}${bold}git pull${reset}${dim}, re-run this installer to update them.${reset}"
+fi

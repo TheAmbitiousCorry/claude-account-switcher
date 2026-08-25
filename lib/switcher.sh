@@ -235,6 +235,34 @@ _clp_backups() {
   echo "  cp <path> ~/.claude.json"
 }
 
+# clp version
+# What is installed, from where, and whether the checkout has moved on.
+_clp_version() {
+  local info="$CLAUDE_ACCOUNTS_ROOT/.install-info"
+  if [ ! -r "$info" ]; then
+    echo "  no install info found at $info"
+    return 0
+  fi
+  local CAS_INSTALL_MODE="" CAS_INSTALL_REPO="" CAS_INSTALL_COMMIT="" CAS_INSTALL_DATE=""
+  # shellcheck source=/dev/null
+  source "$info"
+  printf '  installed  %s (%s)\n' "${CAS_INSTALL_COMMIT:-unknown}" "${CAS_INSTALL_MODE:-unknown}"
+  printf '  from       %s\n' "${CAS_INSTALL_REPO:-unknown}"
+  printf '  on         %s\n' "${CAS_INSTALL_DATE:-unknown}"
+
+  # A copy install goes stale quietly: git pull updates the checkout, not the
+  # files actually being run.
+  if [ "$CAS_INSTALL_MODE" = "copy" ] && [ -d "$CAS_INSTALL_REPO/.git" ]; then
+    local head
+    head="$(git -C "$CAS_INSTALL_REPO" rev-parse --short HEAD 2>/dev/null)"
+    if [ -n "$head" ] && [ "$head" != "$CAS_INSTALL_COMMIT" ]; then
+      echo
+      echo "  the checkout is at $head now"
+      echo "  re-run ./install.sh there to update what is installed"
+    fi
+  fi
+}
+
 _clp_help() {
   cat <<'EOF'
 clp - Claude Code account profiles
@@ -244,6 +272,7 @@ clp - Claude Code account profiles
   clp use <name>       launch Claude Code on that profile
   clp remove <name>    delete a profile, after backing up its sign-in
   clp backups          config and credential copies kept automatically
+  clp version          what is installed, and whether it is behind
 
 Also:
   claude               bare, with more than one profile, asks which to use
@@ -260,6 +289,7 @@ clp() {
     remove|rm)      _clp_remove "$@" ;;
     use)            _clp_use "$@" ;;
     backups)        _clp_backups "$@" ;;
+    version)        _clp_version "$@" ;;
     help|-h|--help) _clp_help ;;
     *)
       echo "clp: unknown command '$cmd'" >&2
@@ -273,7 +303,7 @@ clp() {
 _clp_complete() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
   if [ "$COMP_CWORD" -le 1 ]; then
-    COMPREPLY=($(compgen -W "list add use remove backups help" -- "$cur"))
+    COMPREPLY=($(compgen -W "list add use remove backups version help" -- "$cur"))
     return
   fi
   case "${COMP_WORDS[1]}" in

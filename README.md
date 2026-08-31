@@ -122,7 +122,8 @@ and tells you when they differ.
 | --- | --- |
 | `claude` | Picker, when more than one profile exists |
 | `claude @work` | Launch a specific profile |
-| `claude mcp list` | Any arguments at all mean no picker, uses default |
+| `claude mcp add …` | Asks which account, when run in a terminal: `mcp`, `plugin` and `config` write account-owned state (override the list with `CLAUDE_ACCOUNTS_PICK_SUBCOMMANDS`, empty means never ask) |
+| `claude -p "fix it"` | Other arguments mean no picker, uses default |
 | `CLAUDE_PROFILE=work claude` | Choose by environment, works in scripts |
 | `clp list` | Every profile and the account it is signed in as |
 | `clp add <name>` | Create a profile, then sign in with `/login` |

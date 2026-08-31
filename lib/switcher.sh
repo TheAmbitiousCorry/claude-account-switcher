@@ -365,6 +365,44 @@ PY
   return 0
 }
 
+# Ask which profile to use. Prints the chosen name; returns 1 on cancel.
+# With a single profile there is nothing to ask, so it answers immediately.
+_claude_pick_profile() {
+  local header="${1:-Claude account}"
+  local names=() n
+  while read -r n; do [ -n "$n" ] && names+=("$n"); done < <(_claude_profile_names)
+  if [ "${#names[@]}" -le 1 ]; then
+    echo "${names[0]:-default}"
+    return 0
+  fi
+
+  local labels=() name dir email
+  for name in "${names[@]}"; do
+    if [ "$name" = "default" ]; then dir="default"; else dir="$CLAUDE_ACCOUNTS_ROOT/$name"; fi
+    email="$(_claude_profile_email "$dir" "$name")"
+    labels+=("$name   $email")
+  done
+
+  local picked=""
+  if command -v gum >/dev/null 2>&1; then
+    picked="$(printf '%s\n' "${labels[@]}" | gum choose --header "$header")"
+  elif command -v fzf >/dev/null 2>&1; then
+    picked="$(printf '%s\n' "${labels[@]}" | fzf --prompt="$header > " --height=~10)"
+  else
+    echo "$header:" >&2
+    local i=1 l
+    for l in "${labels[@]}"; do echo "  $i) $l" >&2; i=$((i+1)); done
+    read -r -p "> " i
+    case "$i" in
+      ''|*[!0-9]*) return 1 ;;
+      *) picked="${labels[$((i-1))]}" ;;
+    esac
+  fi
+
+  [ -n "$picked" ] || return 1
+  echo "${picked%% *}"
+}
+
 # Run claude under a named profile.
 _claude_run_profile() {
   local name="$1"; shift
@@ -397,46 +435,34 @@ claude() {
     return
   fi
 
-  # Any arguments at all means a subcommand, a flag, or a one-shot prompt.
-  # Those must never block on a picker, so they go straight to the default.
+  # Subcommands that write account-owned state get asked which account they
+  # apply to, so an MCP server or a plugin does not silently land on the
+  # default. Only when a terminal is there to ask on; scripts and pipes fall
+  # through to the default exactly as before. Override the list in config.sh,
+  # or set it empty to never ask.
+  if [ "$#" -gt 0 ] && [ -t 0 ]; then
+    case " ${CLAUDE_ACCOUNTS_PICK_SUBCOMMANDS-mcp plugin config} " in
+      *" $1 "*)
+        local want
+        want="$(_claude_pick_profile "Run 'claude $1' on which account?")" || {
+          echo "cancelled" >&2
+          return 1
+        }
+        _claude_run_profile "$want" "$@"
+        return
+        ;;
+    esac
+  fi
+
+  # Everything else with arguments is a flag or a one-shot prompt. Those must
+  # never block on a picker, so they go straight to the default.
   if [ "$#" -gt 0 ]; then
     command claude "$@"
     return
   fi
 
   # Bare `claude`: choose an account.
-  local names=()
-  while read -r n; do [ -n "$n" ] && names+=("$n"); done < <(_claude_profile_names)
-
-  # Only one profile exists, so there is nothing to choose.
-  if [ "${#names[@]}" -le 1 ]; then
-    command claude
-    return
-  fi
-
-  local labels=() name dir email
-  for name in "${names[@]}"; do
-    if [ "$name" = "default" ]; then dir="default"; else dir="$CLAUDE_ACCOUNTS_ROOT/$name"; fi
-    email="$(_claude_profile_email "$dir" "$name")"
-    labels+=("$name   $email")
-  done
-
-  local picked=""
-  if command -v gum >/dev/null 2>&1; then
-    picked="$(printf '%s\n' "${labels[@]}" | gum choose --header "Claude account")"
-  elif command -v fzf >/dev/null 2>&1; then
-    picked="$(printf '%s\n' "${labels[@]}" | fzf --prompt="Claude account > " --height=~10)"
-  else
-    echo "Claude account:"
-    local i=1
-    for l in "${labels[@]}"; do echo "  $i) $l"; i=$((i+1)); done
-    read -r -p "> " i
-    case "$i" in
-      ''|*[!0-9]*) echo "cancelled" >&2; return 1 ;;
-      *) picked="${labels[$((i-1))]}" ;;
-    esac
-  fi
-
-  [ -n "$picked" ] || { echo "cancelled" >&2; return 1; }
-  _claude_run_profile "${picked%% *}"
+  local picked
+  picked="$(_claude_pick_profile "Claude account")" || { echo "cancelled" >&2; return 1; }
+  _claude_run_profile "$picked"
 }

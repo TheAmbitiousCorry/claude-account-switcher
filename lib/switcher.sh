@@ -323,10 +323,53 @@ _clp_complete() {
 }
 complete -F _clp_complete clp 2>/dev/null
 
+# Claude Code records each marketplace's installLocation as an absolute path
+# under whichever profile added it, and validates it as a string against the
+# active CLAUDE_CONFIG_DIR. With plugins shared by symlink one registry file
+# serves every profile, so the recorded spelling can match only one of them
+# and `/plugin` refresh fails on the rest with a "corrupted installLocation"
+# error. Rewrite the spellings to the active profile before every launch. The
+# realpath guard leaves genuinely separate marketplace directories (isolated
+# profiles) untouched; the dead-path arm repairs a location whose directory no
+# longer exists when the active one does.
+_clp_normalize_marketplaces() {
+  local cfg="$1" km="$1/plugins/known_marketplaces.json"
+  [ -r "$km" ] || return 0
+  python3 - "$km" "$cfg/plugins" <<'PY' 2>/dev/null
+import json, os, sys
+path, plugroot = sys.argv[1], sys.argv[2]
+try:
+    with open(path) as f:
+        d = json.load(f)
+except Exception:
+    sys.exit(0)
+changed = False
+for name, entry in d.items():
+    loc = entry.get("installLocation")
+    if not isinstance(loc, str):
+        continue
+    want = os.path.join(plugroot, "marketplaces", name)
+    if loc == want or not os.path.isdir(want):
+        continue
+    same = os.path.realpath(loc) == os.path.realpath(want)
+    dead = not os.path.exists(loc)
+    if same or dead:
+        entry["installLocation"] = want
+        changed = True
+if changed:
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(d, f, indent=2)
+    os.replace(tmp, path)
+PY
+  return 0
+}
+
 # Run claude under a named profile.
 _claude_run_profile() {
   local name="$1"; shift
   if [ "$name" = "default" ]; then
+    _clp_normalize_marketplaces "$HOME/.claude"
     command claude "$@"
   else
     local dir="$CLAUDE_ACCOUNTS_ROOT/$name"
@@ -335,6 +378,7 @@ _claude_run_profile() {
       return 1
     fi
     _claude_sync_profile "$dir"
+    _clp_normalize_marketplaces "$dir"
     CLAUDE_CONFIG_DIR="$dir" command claude "$@"
   fi
 }

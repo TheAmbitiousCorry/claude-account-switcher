@@ -41,8 +41,10 @@ if [ -z "$title" ] && [ -r "${transcript:-}" ]; then
 fi
 title="$(printf '%s' "$title" | tr -d '[:cntrl:]')"
 [ "${#title}" -gt "$TITLE_MAX" ] && title="${title:0:$((TITLE_MAX - 1))}…"
+# On its own line above the badge, so a long title never pushes the account
+# off the right edge of a narrow terminal.
 title_seg=""
-[ -n "$title" ] && title_seg=$'\033[1m'"${title}"$'\033[0m'" "
+[ -n "$title" ] && title_seg=$'\033[1m'"${title}"$'\033[0m\n'
 
 # Which profile is this.
 if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then

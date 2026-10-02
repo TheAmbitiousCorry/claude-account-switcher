@@ -218,11 +218,13 @@ Hyprland config.
 
 ## Status line
 
-Optional, chosen at install time. It renders the chat title, then a coloured
-badge with the profile name and the email that profile is signed in as:
+Optional, chosen at install time. It renders the chat title on one line and,
+below it, a coloured badge with the profile name and the email that profile is
+signed in as:
 
 ```
-Fix the login redirect  ● work  you@company.com
+Fix the login redirect
+ ● work  you@company.com
 ```
 
 The title is the name set with `/rename`, or else the one Claude Code generates

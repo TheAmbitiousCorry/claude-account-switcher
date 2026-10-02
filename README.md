@@ -218,12 +218,16 @@ Hyprland config.
 
 ## Status line
 
-Optional, chosen at install time. It renders a coloured badge with the profile
-name and the email that profile is signed in as:
+Optional, chosen at install time. It renders the chat title, then a coloured
+badge with the profile name and the email that profile is signed in as:
 
 ```
- ● work  you@company.com
+Fix the login redirect  ● work  you@company.com
 ```
+
+The title is the name set with `/rename`, or else the one Claude Code generates
+for the session. It is cut at 40 characters (`TITLE_MAX` in the script), and a
+chat with no title yet shows only the badge.
 
 Colours are derived from the profile name, so a new account is visually distinct
 without configuration. Override them in `~/.claude-accounts/colors.conf` as
@@ -236,7 +240,8 @@ client=21
 
 The account cannot change mid-session, so the badge is rendered once per session
 and cached. Claude Code calls a status line on a 300ms debounce during active
-work, and parsing a 60KB config that often would be waste.
+work, and parsing a 60KB config that often would be waste. The title is the
+exception: it changes as the conversation moves, so it is read on every run.
 
 If the unslop hook from [nibble-skills](https://github.com/Nibble-A-Bit/nibble-skills)
 ran in the session, a `✎ unslop` segment follows the email. It reads the state

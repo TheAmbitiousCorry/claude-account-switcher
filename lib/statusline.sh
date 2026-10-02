@@ -16,7 +16,33 @@ PALETTE=(29 24 90 130 53 22 60 96)   # 256-colour codes, distinguishable on dark
 DEFAULT_COLOR=29                      # green, for the primary account
 
 input="$(cat)"
-session_id="$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)"
+# One jq call for all three fields. The separator is \x1f, not a tab: read
+# collapses runs of whitespace separators, which would shift an empty field.
+IFS=$'\x1f' read -r session_id session_name transcript < <(
+  printf '%s' "$input" \
+    | jq -r '[.session_id, .session_name, .transcript_path] | map(. // "") | join("\u001f")' 2>/dev/null
+)
+
+# Title segment. A name set with /rename wins. Otherwise the title is whatever
+# Claude Code last wrote to the transcript, so it is read on every run and
+# never cached: it changes mid-session and the account badge does not.
+TITLE_MAX=40
+title="${session_name:-}"
+if [ -z "$title" ] && [ -r "${transcript:-}" ]; then
+  for kind in custom-title ai-title; do
+    # Anchored to the line start so a message that quotes a title entry
+    # cannot match. tac finds the latest entry without reading the whole file
+    # in the common case, where a title is rewritten after every turn.
+    title="$(tac "$transcript" 2>/dev/null \
+      | grep -m1 "^{\"type\":\"${kind}\"" \
+      | jq -r '.customTitle // .aiTitle // empty' 2>/dev/null)"
+    [ -n "$title" ] && break
+  done
+fi
+title="$(printf '%s' "$title" | tr -d '[:cntrl:]')"
+[ "${#title}" -gt "$TITLE_MAX" ] && title="${title:0:$((TITLE_MAX - 1))}…"
+title_seg=""
+[ -n "$title" ] && title_seg=$'\033[1m'"${title}"$'\033[0m'" "
 
 # Which profile is this.
 if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
@@ -40,6 +66,7 @@ cache=""
 if [ -n "$session_id" ]; then
   cache="$cache_dir/claude-account-${session_id}-${profile}"
   if [ -s "$cache" ] && [ "$cache" -nt "$config" ] && [ ! "$unslop_state" -nt "$cache" ]; then
+    printf '%s' "$title_seg"
     cat "$cache"
     exit 0
   fi
@@ -84,7 +111,7 @@ if [ -n "$unslop_mode" ]; then
   out="${out} ${unslop_sgr}✎ ${unslop_label}"$'\033[0m'
 fi
 
-printf '%s' "$out"
+printf '%s%s' "$title_seg" "$out"
 [ -n "$cache" ] && printf '%s' "$out" > "$cache" 2>/dev/null
 
 exit 0

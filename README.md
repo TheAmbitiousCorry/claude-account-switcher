@@ -238,6 +238,11 @@ The account cannot change mid-session, so the badge is rendered once per session
 and cached. Claude Code calls a status line on a 300ms debounce during active
 work, and parsing a 60KB config that often would be waste.
 
+If the unslop hook from [nibble-skills](https://github.com/Nibble-A-Bit/nibble-skills)
+ran in the session, a `✎ unslop` segment follows the email. It reads the state
+file the hook writes at session start, so it shows that the mode is live, not
+that the plugin is installed. Without that file it renders nothing.
+
 One trade-off, and it is not this tool's doing: Claude Code hides most footer
 keyboard hints when any custom status line is configured, including
 `esc to interrupt` and `? for shortcuts`. Skip the status line at install time if

@@ -27,6 +27,11 @@ else
   config="$HOME/.claude.json"
 fi
 
+# Unslop writes its resolved mode here at SessionStart, keyed by session. No
+# file means the hook did not run for this session, so the badge stays off:
+# it reports that the mode is live, not that the plugin is installed.
+unslop_state="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.unslop/${session_id:-none}"
+
 # The account cannot change mid-session, so render once and reuse. This script
 # runs on a 300ms debounce during active work and the config file is ~60KB;
 # parsing it every time would be pure waste.
@@ -34,7 +39,7 @@ cache_dir="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
 cache=""
 if [ -n "$session_id" ]; then
   cache="$cache_dir/claude-account-${session_id}-${profile}"
-  if [ -s "$cache" ] && [ "$cache" -nt "$config" ]; then
+  if [ -s "$cache" ] && [ "$cache" -nt "$config" ] && [ ! "$unslop_state" -nt "$cache" ]; then
     cat "$cache"
     exit 0
   fi
@@ -65,6 +70,19 @@ fi
 badge=$'\033'"[48;5;${color}m"$'\033[38;5;231m'" ● ${profile} "$'\033[0m'
 dim=$'\033[2m'"${email}"$'\033[0m'
 out="${badge} ${dim}"
+
+# Unslop segment. Absent state file renders nothing at all.
+unslop_mode="$(cat "$unslop_state" 2>/dev/null)"
+if [ -n "$unslop_mode" ]; then
+  # Enforce reads bright, advisory stays dim, so the colour itself says which
+  # mode is live rather than only the label text.
+  case "$unslop_mode" in
+    enforce)  unslop_label="unslop";                 unslop_sgr=$'\033[1;38;5;114m' ;;
+    advisory) unslop_label="unslop?";                unslop_sgr=$'\033[2;38;5;108m' ;;
+    *)        unslop_label="unslop:${unslop_mode}";  unslop_sgr=$'\033[38;5;179m' ;;
+  esac
+  out="${out} ${unslop_sgr}✎ ${unslop_label}"$'\033[0m'
+fi
 
 printf '%s' "$out"
 [ -n "$cache" ] && printf '%s' "$out" > "$cache" 2>/dev/null
